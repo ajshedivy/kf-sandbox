@@ -1,0 +1,105 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: first-pipeline-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18, pipelines.kubeflow.org/pipeline_compilation_time: '2023-01-19T23:11:01.372478',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Applies Decision Tree
+      and Logistic Regression for classification problem.", "name": "First Pipeline"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18}
+spec:
+  entrypoint: first-pipeline
+  templates:
+  - name: download-data
+    container:
+      args: [--dataset, /tmp/inputs/dataset/data, --output, /tmp/outputs/output/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'scikit-learn==0.24.2' 'pandas==1.3.3' || PIP_DISABLE_PIP_VERSION_CHECK=1
+        python3 -m pip install --quiet --no-warn-script-location 'scikit-learn==0.24.2'
+        'pandas==1.3.3' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def download_data(
+            dataset,
+            output
+        ):
+
+            from sklearn.datasets import load_iris, load_breast_cancer, load_diabetes, load_wine
+            from pathlib import Path
+
+            DATASETS = {
+                'load_iris': load_iris,
+                'load_breast_cancer': load_breast_cancer,
+                'load_diabetes': load_diabetes,
+                'load_wine': load_wine
+            }
+
+            data = DATASETS[dataset](as_frame=True)
+
+            Path(output).parent.mkdir(parents=True, exist_ok=True)
+            data.frame.to_csv(output, index=False)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Download data', description='')
+        _parser.add_argument("--dataset", dest="dataset", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output", dest="output", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = download_data(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - name: dataset
+        path: /tmp/inputs/dataset/data
+        raw: {data: load_iris}
+    outputs:
+      artifacts:
+      - {name: download-data-output, path: /tmp/outputs/output/data}
+    metadata:
+      annotations: {author: Evidently AI, pipelines.kubeflow.org/component_spec: '{"implementation":
+          {"container": {"args": ["--dataset", {"inputPath": "dataset"}, "--output",
+          {"outputPath": "output"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''scikit-learn==0.24.2''
+          ''pandas==1.3.3'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+          --quiet --no-warn-script-location ''scikit-learn==0.24.2'' ''pandas==1.3.3''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef download_data(\n    dataset,\n    output\n):\n\n    from
+          sklearn.datasets import load_iris, load_breast_cancer, load_diabetes, load_wine\n    from
+          pathlib import Path\n\n    DATASETS = {\n        ''load_iris'': load_iris,\n        ''load_breast_cancer'':
+          load_breast_cancer,\n        ''load_diabetes'': load_diabetes,\n        ''load_wine'':
+          load_wine\n    }\n\n    data = DATASETS[dataset](as_frame=True)\n\n    Path(output).parent.mkdir(parents=True,
+          exist_ok=True)\n    data.frame.to_csv(output, index=False)\n\nimport argparse\n_parser
+          = argparse.ArgumentParser(prog=''Download data'', description='''')\n_parser.add_argument(\"--dataset\",
+          dest=\"dataset\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output\",
+          dest=\"output\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = download_data(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"name": "dataset", "type": "String"}], "metadata": {"annotations": {"author":
+          "Evidently AI"}}, "name": "Download data", "outputs": [{"name": "output",
+          "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{"digest": "fcfb604bf8f64dce71dd380ea4e3567c6e747e0c140f9576dc837ebf54adb7eb",
+          "url": "/Users/adamshedivy/Documents/IBM/sandbox/jumpstart/kf-sandbox/pipelines/datasets/download_datasets/download_data_component.yaml"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: first-pipeline
+    dag:
+      tasks:
+      - {name: download-data, template: download-data}
+  arguments:
+    parameters: []
+  serviceAccountName: pipeline-runner

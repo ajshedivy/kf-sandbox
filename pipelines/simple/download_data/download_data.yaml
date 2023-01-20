@@ -1,0 +1,15 @@
+name: Download Data Function
+description: Download toy data from sklearn datasets
+
+outputs:
+- {name: Data, type: LocalPath, description: 'Path where data will be stored.'}
+
+implementation:
+  container:
+    image: ajshedivy/download_data@sha256:7437bfebd6df56908a9f4fd138e7a6e00f6339638d221effd073f3b6c57ed31c
+    command: [
+      python, download_data.py,
+
+      --data,
+      {outputPath: Data},
+    ]

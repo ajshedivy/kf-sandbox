@@ -1,0 +1,22 @@
+name: Evidently Data Quality Report
+description: |
+  Generate Evidently Data Quality Report and output to a file.
+
+inputs:
+  - {name: cur_data, type: LocalPath, description: Current Data path}
+
+outputs:
+  - {name: output, type: LocalPath, description: Output path}
+
+implementation:
+  container:
+    image: ajshedivy/kf-pipeline-data-quality@sha256:25c3e785d4a7ffb98c9d535abb6b0116d4b1a94c7cc52dba3041a46bf595565e
+    command: [
+      python,
+      #path to python script in container
+      /pipelines/components/src/presets.py,
+      --cur_data,
+      {inputValue: cur_data},
+      --output,
+      {outputPath: output},
+    ]

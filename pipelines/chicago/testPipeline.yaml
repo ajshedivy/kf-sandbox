@@ -1,0 +1,78 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-pipeline-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18, pipelines.kubeflow.org/pipeline_compilation_time: '2023-01-19T23:23:23.859568',
+    pipelines.kubeflow.org/pipeline_spec: '{"name": "test-pipeline"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18}
+spec:
+  entrypoint: test-pipeline
+  templates:
+  - name: chicago-taxi-trips-dataset
+    container:
+      args: []
+      command:
+      - sh
+      - -c
+      - |
+        set -e -x -o pipefail
+        output_path="$0"
+        select="$1"
+        where="$2"
+        limit="$3"
+        format="$4"
+        mkdir -p "$(dirname "$output_path")"
+        curl --get 'https://data.cityofchicago.org/resource/wrvz-psew.'"${format}" \
+            --data-urlencode '$limit='"${limit}" \
+            --data-urlencode '$where='"${where}" \
+            --data-urlencode '$select='"${select}" \
+            | tr -d '"' > "$output_path"  # Removing unneeded quotes around all numbers
+      - /tmp/outputs/Table/data
+      - tips,trip_seconds,trip_miles,pickup_community_area,dropoff_community_area,fare,tolls,extras,trip_total
+      - trip_start_timestamp >= "2019-01-01" AND trip_start_timestamp < "2019-02-01"
+      - '10000'
+      - csv
+      image: curlimages/curl
+    outputs:
+      artifacts:
+      - {name: chicago-taxi-trips-dataset-Table, path: /tmp/outputs/Table/data}
+    metadata:
+      annotations: {author: Alexey Volkov <alexey.volkov@ark-kun.com>, pipelines.kubeflow.org/component_spec: '{"description":
+          "City of Chicago Taxi Trips dataset: https://data.cityofchicago.org/Transportation/Taxi-Trips/wrvz-psew\n\nThe
+          input parameters configure the SQL query to the database.\nThe dataset is
+          pretty big, so limit the number of results using the `Limit` or `Where`
+          parameters.\nRead [Socrata dev](https://dev.socrata.com/docs/queries/) for
+          the advanced query syntax\n", "implementation": {"container": {"command":
+          ["sh", "-c", "set -e -x -o pipefail\noutput_path=\"$0\"\nselect=\"$1\"\nwhere=\"$2\"\nlimit=\"$3\"\nformat=\"$4\"\nmkdir
+          -p \"$(dirname \"$output_path\")\"\ncurl --get ''https://data.cityofchicago.org/resource/wrvz-psew.''\"${format}\"
+          \\\n    --data-urlencode ''$limit=''\"${limit}\" \\\n    --data-urlencode
+          ''$where=''\"${where}\" \\\n    --data-urlencode ''$select=''\"${select}\"
+          \\\n    | tr -d ''\"'' > \"$output_path\"  # Removing unneeded quotes around
+          all numbers\n", {"outputPath": "Table"}, {"inputValue": "Select"}, {"inputValue":
+          "Where"}, {"inputValue": "Limit"}, {"inputValue": "Format"}], "image": "curlimages/curl"}},
+          "inputs": [{"default": "trip_start_timestamp>=\"1900-01-01\" AND trip_start_timestamp<\"2100-01-01\"",
+          "name": "Where", "type": "String"}, {"default": "1000", "description": "Number
+          of rows to return. The rows are randomly sampled.", "name": "Limit", "type":
+          "Integer"}, {"default": "trip_id,taxi_id,trip_start_timestamp,trip_end_timestamp,trip_seconds,trip_miles,pickup_census_tract,dropoff_census_tract,pickup_community_area,dropoff_community_area,fare,tips,tolls,extras,trip_total,payment_type,company,pickup_centroid_latitude,pickup_centroid_longitude,pickup_centroid_location,dropoff_centroid_latitude,dropoff_centroid_longitude,dropoff_centroid_location",
+          "name": "Select", "type": "String"}, {"default": "csv", "description": "Output
+          data format. Suports csv,tsv,cml,rdf,json", "name": "Format", "type": "String"}],
+          "metadata": {"annotations": {"author": "Alexey Volkov <alexey.volkov@ark-kun.com>"}},
+          "name": "Chicago Taxi Trips dataset", "outputs": [{"description": "Result
+          type depends on format. CSV and TSV have header.", "name": "Table"}]}',
+        pipelines.kubeflow.org/component_ref: '{"digest": "ecf2f2840c57bd9cb2778c8f529da9b938b81f59294b3f7271cb23b363640343",
+          "url": "https://raw.githubusercontent.com/kubeflow/pipelines/e3337b8bdcd63636934954e592d4b32c95b49129/components/datasets/Chicago%20Taxi/component.yaml"}',
+        pipelines.kubeflow.org/arguments.parameters: '{"Format": "csv", "Limit": "10000",
+          "Select": "tips,trip_seconds,trip_miles,pickup_community_area,dropoff_community_area,fare,tolls,extras,trip_total",
+          "Where": "trip_start_timestamp >= \"2019-01-01\" AND trip_start_timestamp
+          < \"2019-02-01\""}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: test-pipeline
+    dag:
+      tasks:
+      - {name: chicago-taxi-trips-dataset, template: chicago-taxi-trips-dataset}
+  arguments:
+    parameters: []
+  serviceAccountName: pipeline-runner

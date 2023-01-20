@@ -1,0 +1,21 @@
+name: Decision Tree classifier
+description: Trains a  decision tree classifier
+
+inputs:
+- {name: Data, type: LocalPath, description: 'Path where data is stored.'}
+outputs:
+- {name: Accuracy, type: Float, description: 'Accuracy metric'}
+
+implementation:
+  container:
+    image: ajshedivy/decision_tree@sha256:c94f470a6064f52d0754a077bdc52f9a13e006e149a37f1cbc9603b0bd72fd7c
+    command: [
+      python, decision_tree.py,
+
+      --data,
+      {inputPath: Data},
+
+      --accuracy,
+      {outputPath: Accuracy},
+
+    ]
