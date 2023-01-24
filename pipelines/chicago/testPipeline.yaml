@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: test-pipeline-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18, pipelines.kubeflow.org/pipeline_compilation_time: '2023-01-19T23:23:23.859568',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18, pipelines.kubeflow.org/pipeline_compilation_time: '2023-01-20T14:36:51.420101',
     pipelines.kubeflow.org/pipeline_spec: '{"name": "test-pipeline"}'}
   labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.18}
 spec:
@@ -69,10 +69,189 @@ spec:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
         pipelines.kubeflow.org/pipeline-sdk-type: kfp
         pipelines.kubeflow.org/enable_caching: "true"
+  - name: data-quality-report
+    container:
+      args: [--cur, /tmp/inputs/cur/data, --output, /tmp/outputs/output/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'evidently==0.2.0' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'evidently==0.2.0' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def data_quality_report(
+            cur_path,
+            output_path,
+        ):
+
+            import pandas as pd
+            from evidently.metric_preset import DataQualityPreset
+            from evidently.report import Report
+            from pathlib import Path
+
+            df = pd.read_csv(cur_path)
+
+            report = Report(metrics=[
+                DataQualityPreset()
+            ])
+
+            report.run(current_data=df, reference_data=None, column_mapping=None)
+
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            report.save_html(output_path)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Data quality report', description='')
+        _parser.add_argument("--cur", dest="cur_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output", dest="output_path", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = data_quality_report(**_parsed_args)
+      image: quay.io/ibm/kubeflow-notebook-image-ppc64le:latest
+    inputs:
+      artifacts:
+      - {name: chicago-taxi-trips-dataset-Table, path: /tmp/inputs/cur/data}
+    outputs:
+      artifacts:
+      - {name: data-quality-report-output, path: /tmp/outputs/output/data}
+    metadata:
+      annotations: {author: Evidently AI, pipelines.kubeflow.org/component_spec: '{"implementation":
+          {"container": {"args": ["--cur", {"inputPath": "cur"}, "--output", {"outputPath":
+          "output"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+          -m pip install --quiet --no-warn-script-location ''evidently==0.2.0'' ||
+          PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''evidently==0.2.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef data_quality_report(\n    cur_path,\n    output_path,\n):\n\n    import
+          pandas as pd\n    from evidently.metric_preset import DataQualityPreset\n    from
+          evidently.report import Report\n    from pathlib import Path\n\n    df =
+          pd.read_csv(cur_path)\n\n    report = Report(metrics=[\n        DataQualityPreset()\n    ])\n\n    report.run(current_data=df,
+          reference_data=None, column_mapping=None)\n\n    Path(output_path).parent.mkdir(parents=True,
+          exist_ok=True)\n    report.save_html(output_path)\n\nimport argparse\n_parser
+          = argparse.ArgumentParser(prog=''Data quality report'', description='''')\n_parser.add_argument(\"--cur\",
+          dest=\"cur_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output\",
+          dest=\"output_path\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = data_quality_report(**_parsed_args)\n"], "image": "quay.io/ibm/kubeflow-notebook-image-ppc64le:latest"}},
+          "inputs": [{"name": "cur", "type": "CSV"}], "metadata": {"annotations":
+          {"author": "Evidently AI"}}, "name": "Data quality report", "outputs": [{"name":
+          "output", "type": "HTML"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "38ea12bd196a7a6e17d06c5aecebe9ceefa85b172c28457c15758af3b057ee33", "url":
+          "/Users/adamshedivy/Documents/IBM/sandbox/jumpstart/kf-sandbox/components/evidently/data_quality/component.yaml"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
   - name: test-pipeline
     dag:
       tasks:
       - {name: chicago-taxi-trips-dataset, template: chicago-taxi-trips-dataset}
+      - name: data-quality-report
+        template: data-quality-report
+        dependencies: [chicago-taxi-trips-dataset]
+        arguments:
+          artifacts:
+          - {name: chicago-taxi-trips-dataset-Table, from: '{{tasks.chicago-taxi-trips-dataset.outputs.artifacts.chicago-taxi-trips-dataset-Table}}'}
+      - name: view-html
+        template: view-html
+        dependencies: [data-quality-report]
+        arguments:
+          artifacts:
+          - {name: data-quality-report-output, from: '{{tasks.data-quality-report.outputs.artifacts.data-quality-report-output}}'}
+  - name: view-html
+    container:
+      args: [--html, /tmp/inputs/html/data, --mlpipeline-ui-metadata, /tmp/outputs/mlpipeline_ui_metadata/data]
+      command:
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def view_html(
+            html_path,
+            mlpipeline_ui_metadata_path,
+        ):
+
+            import os
+            import json
+
+            html = os.path.abspath(html_path)
+            html_content = open(html, 'r').read()
+
+            metadata = {
+                'outputs' : [{
+                'type': 'web-app',
+                'storage': 'inline',
+                'source': html_content,
+                }, {
+                'type': 'web-app',
+                'storage': 'inline',
+                'source': '<h1>Hello, World!</h1>',
+                }]
+            }
+
+            with open(mlpipeline_ui_metadata_path, 'w') as f:
+                json.dump(metadata, f)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='View html', description='')
+        _parser.add_argument("--html", dest="html_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--mlpipeline-ui-metadata", dest="mlpipeline_ui_metadata_path", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = view_html(**_parsed_args)
+      image: quay.io/ibm/kubeflow-notebook-image-ppc64le:latest
+    inputs:
+      artifacts:
+      - {name: data-quality-report-output, path: /tmp/inputs/html/data}
+    outputs:
+      artifacts:
+      - {name: mlpipeline-ui-metadata, path: /tmp/outputs/mlpipeline_ui_metadata/data}
+    metadata:
+      annotations: {author: Evidently AI, pipelines.kubeflow.org/component_spec: '{"implementation":
+          {"container": {"args": ["--html", {"inputPath": "html"}, "--mlpipeline-ui-metadata",
+          {"outputPath": "mlpipeline_ui_metadata"}], "command": ["sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef view_html(\n    html_path,\n    mlpipeline_ui_metadata_path,\n):\n\n    import
+          os\n    import json\n\n    html = os.path.abspath(html_path)\n    html_content
+          = open(html, ''r'').read()\n\n    metadata = {\n        ''outputs'' : [{\n        ''type'':
+          ''web-app'',\n        ''storage'': ''inline'',\n        ''source'': html_content,\n        },
+          {\n        ''type'': ''web-app'',\n        ''storage'': ''inline'',\n        ''source'':
+          ''<h1>Hello, World!</h1>'',\n        }]\n    }\n\n    with open(mlpipeline_ui_metadata_path,
+          ''w'') as f:\n        json.dump(metadata, f)\n\nimport argparse\n_parser
+          = argparse.ArgumentParser(prog=''View html'', description='''')\n_parser.add_argument(\"--html\",
+          dest=\"html_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--mlpipeline-ui-metadata\",
+          dest=\"mlpipeline_ui_metadata_path\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = view_html(**_parsed_args)\n"], "image": "quay.io/ibm/kubeflow-notebook-image-ppc64le:latest"}},
+          "inputs": [{"name": "html", "type": "HTML"}], "metadata": {"annotations":
+          {"author": "Evidently AI"}}, "name": "View html", "outputs": [{"name": "mlpipeline_ui_metadata"}]}',
+        pipelines.kubeflow.org/component_ref: '{"digest": "ef3c35fbce48ee454dcb3b2d65225cd31d52a73f2d38c2fb903fd0951d153223",
+          "url": "/Users/adamshedivy/Documents/IBM/sandbox/jumpstart/kf-sandbox/components/evidently/html_viewer/view_html_component.yaml"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
   arguments:
     parameters: []
   serviceAccountName: pipeline-runner
